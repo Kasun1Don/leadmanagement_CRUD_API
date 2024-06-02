@@ -43,4 +43,4 @@ or
 ## Roadmap of Features
 
 1. Flask Migrations to preserve new data instead of dropping all tables
-2. Front end (resolving javascript issues)
+2. Front end (resolving javascript issues - run in firefox) 
