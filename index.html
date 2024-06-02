@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lead Management</title>
+    <style>
+        /* Simple styling for the front end */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #87CEEB; /* Light blue background */
+            color: #333;
+        }
+        .kanban-board {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            padding: 20px;
+        }
+        .column {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            width: 250px;
+            min-height: 400px;
+            background-color: #f4f4f4;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .column h2 {
+            background-color: #333;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 0;
+        }
+        .lead {
+            background-color: white;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: grab;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        input, button {
+            margin: 5px;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #333;
+            color: #fff;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #555;
+        }
+        .form-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">Lead Management</h1>
+    <div class="kanban-board" id="columns"></div>
+    <div class="form-container">
+        <h2>Add Column</h2>
+        <input type="text" id="newColumnName" placeholder="Column Name">
+        <button onclick="addColumn()">Add Column</button>
+    </div>
+    <div class="form-container">
+        <h2>Add Lead</h2>
+        <input type="text" id="newLeadCompanyName" placeholder="Company Name">
+        <input type="text" id="newLeadDescription" placeholder="Description">
+        <input type="text" id="newLeadOwner" placeholder="Lead Owner">
+        <input type="number" id="newLeadColumnId" placeholder="Column ID">
+        <button onclick="addLead()">Add Lead</button>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
+    <script>
+        const apiUrl = 'http://localhost:5000';
+
+        // Fetch and display columns and leads
+        async function fetchColumns() {
+            try {
+                const response = await fetch(`${apiUrl}/columns`);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok ' + response.statusText);
+                }
+                const columns = await response.json();
+                const columnsDiv = document.getElementById('columns');
+                columnsDiv.innerHTML = '';
+                columns.forEach(column => {
+                    const columnDiv = document.createElement('div');
+                    columnDiv.className = 'column';
+                    columnDiv.dataset.columnId = column.id;
+                    columnDiv.innerHTML = `<h2>${column.name}</h2>`;
+                    const leadsContainer = document.createElement('div');
+                    leadsContainer.className = 'leads-container';
+                    column.leads.forEach(lead => {
+                        const leadDiv = document.createElement('div');
+                        leadDiv.className = 'lead';
+                        leadDiv.dataset.leadId = lead.id;
+                        leadDiv.innerHTML = `
+                            <p><strong>${lead.company_name}</strong></p>
+                            <p>${lead.description}</p>
+                            <p>Owner: ${lead.lead_owner}</p>
+                            <button onclick="deleteLead(${lead.id})">Delete Lead</button>
+                            <button onclick="showUpdateLeadForm(${lead.id})">Update Lead</button>
+                        `;
+                        leadsContainer.appendChild(leadDiv);
+                    });
+                    columnDiv.appendChild(leadsContainer);
+                    columnsDiv.appendChild(columnDiv);
+                    
+                    // Make leads sortable (draggable)
+                    new Sortable(leadsContainer, {
+                        group: 'leads',
+                        animation: 150,
+                        onEnd: async function (evt) {
+                            const leadId = evt.item.dataset.leadId;
+                            const newColumnId = evt.to.parentNode.dataset.columnId;
+                            await updateLeadColumn(leadId, newColumnId);
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error('Fetch columns failed: ', error);
+            }
+        }
+
+        // Add a new column
+        async function addColumn() {
+            const name = document.getElementById('newColumnName').value;
+            await fetch(`${apiUrl}/column`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name })
+            });
+            document.getElementById('newColumnName').value = '';
+            fetchColumns();
+        }
+
+        // Add a new lead
+        async function addLead() {
+            const company_name = document.getElementById('newLeadCompanyName').value;
+            const description = document.getElementById('newLeadDescription').value;
+            const lead_owner = document.getElementById('newLeadOwner').value;
+            const column_id = document.getElementById('newLeadColumnId').value;
+            await fetch(`${apiUrl}/lead`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ company_name, description, lead_owner, column_id })
+            });
+            document.getElementById('newLeadCompanyName').value = '';
+            document.getElementById('newLeadDescription').value = '';
+            document.getElementById('newLeadOwner').value = '';
+            document.getElementById('newLeadColumnId').value = '';
+            fetchColumns();
+        }
+
+        // Delete a lead
+        async function deleteLead(id) {
+            await fetch(`${apiUrl}/lead/${id}`, {
+                method: 'DELETE'
+            });
+            fetchColumns();
+        }
+
+        // Show update form for a lead
+        function showUpdateLeadForm(id) {
+            const leadDiv = document.querySelector(`.lead button[onclick="showUpdateLeadForm(${id})"]`).parentNode;
+            leadDiv.innerHTML += `
+                <div id="updateLeadForm${id}">
+                    <input type="text" id="updateLeadCompanyName${id}" placeholder="Company Name">
+                    <input type="text" id="updateLeadDescription${id}" placeholder="Description">
+                    <input type="text" id="updateLeadOwner${id}" placeholder="Lead Owner">
+                    <input type="number" id="updateLeadColumnId${id}" placeholder="Column ID">
+                    <button onclick="updateLead(${id})">Update Lead</button>
+                </div>
+            `;
+        }
+
+        // Update a lead
+        async function updateLead(id) {
+            const company_name = document.getElementById(`updateLeadCompanyName${id}`).value;
+            const description = document.getElementById(`updateLeadDescription${id}`).value;
+            const lead_owner = document.getElementById(`updateLeadOwner${id}`).value;
+            const column_id = document.getElementById(`updateLeadColumnId${id}`).value;
+            await fetch(`${apiUrl}/lead/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ company_name, description, lead_owner, column_id })
+            });
+            fetchColumns();
+        }
+
+        // Update lead column when dragged
+        async function updateLeadColumn(leadId, newColumnId) {
+            const lead = await fetch(`${apiUrl}/lead/${leadId}`).then(response => response.json());
+            lead.column_id = newColumnId;
+            await fetch(`${apiUrl}/lead/${leadId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(lead)
+            });
+            fetchColumns();
+        }
+
+        // Initial fetch
+        fetchColumns();
+    </script>
+</body>
+</html>
